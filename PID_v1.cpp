@@ -26,7 +26,8 @@ PID::PID(double* Input, double* Output, double* Setpoint,
     mySetpoint = Setpoint;
 	inAuto = false;
 	
-	PID::SetOutputLimits(0, 255);				//default output limit corresponds to 
+	//PID::SetOutputLimits(-150, 150);				//default output limit corresponds to 
+  //Corrected by B&J: was PID::SetOutputLimits(0, 255);
 												//the arduino pwm limits
 
     SampleTime = 100;							//default Controller Sample Time is 0.1 seconds
@@ -61,7 +62,7 @@ bool PID::Compute()
  
       /*Compute PID Output*/
       double output = kp * error + ITerm- kd * dInput;
-      
+//    Serial.println("min="+String(outMin)+" max="+String(outMax)+" output="+String(output)+" kp="+String(kp));
 	  if(output > outMax) output = outMax;
       else if(output < outMin) output = outMin;
 	  *myOutput = output;

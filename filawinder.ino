@@ -28,7 +28,10 @@ int maximum_from_EEPROM[4];
 //Spooler PID Setup
 #include "PID_v1.h"
 double Setpoint, Input, Output;                            //Define PID Variables
-PID pullPID(&Input, &Output, &Setpoint, .1, 0, 0, REVERSE);    //Specify the links and initial tuning parameters
+double Kp = 0.0020;
+double Ki = 0;
+double Kd = 0.0001;
+PID pullPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, REVERSE);    //Specify the links and initial tuning parameters
 
 //Digital Pins
 int hall_a_Pin = 7;           // Hall sensor A
@@ -82,6 +85,7 @@ int puller_speed = 255;
 int rotation_status = 0;
 int puller_speed_old = 0;
 
+bool logOn=false;
 
 void setup ()
 {
@@ -161,7 +165,8 @@ Serial.print("QTR Minimum Values: ");
    }
    
   Serial.println();
-  Serial.println();
+  Serial.println("Kp: " + String(Kp , 5) + " Ki: " + String(Ki) + " Kd: " + String(Kd , 5));
+  
 
   
   
@@ -175,7 +180,9 @@ Serial.print("QTR Minimum Values: ");
     // initialize all the knob readings to 0: 
   for (int thisReading = 0; thisReading < numReadings; thisReading++)
     readings[thisReading] = 0;   
-  
+
+  pullPID.SetOutputLimits(-150, 150);
+//  pullPID.SetSampleTime(500);
   
 }
  
@@ -210,14 +217,16 @@ serial_output();   //Troubleshoot mode
 
 if (digitalRead(3) == 0 && digitalRead(8) == 1) {     //If guide max nutton is pressed go to calibrate_max
                                                       //calibrate_max will loop while the button is held down.
-calibrate_max();                                      //When the button is let up it will return here and write the
-EEPROM.writeFloat(90, guide_max);                           //new value to the EEPROM
+//calibrate_max();                                      //When the button is let up it will return here and write the
+//EEPROM.writeFloat(90, guide_max);                           //new value to the EEPROM
+logOn=true;
 }
 
 if (digitalRead(8) == 0 && digitalRead(3) ==1) {      //If guide min button is pressed go to guide min
 
-calibrate_min();
-EEPROM.writeFloat(100, guide_min); 
+//calibrate_min();
+//EEPROM.writeFloat(100, guide_min); 
+logOn=false;
 }
 
 // Calibrate   
@@ -275,8 +284,11 @@ void manual_control()
 
   }
 
+unsigned int previousLinePosition=0;
+
 void pull_control()
 {
+  previousLinePosition=Input;
   qtra.readCalibrated(sensorValues);              
   unsigned int line_position = qtra.readLine(sensorValues, QTR_EMITTERS_OFF, 1);  
   
@@ -286,14 +298,26 @@ void pull_control()
 
   if (!pullPID.Compute()) return;              //Run the PID 
 
-  int ScaledOutput = (Output * 1.7);             //Scale the Output from 0-150 to 0-255)       
-  if (ScaledOutput <= 0) {ScaledOutput = 1;}     //Limit the output to the range of 0-255) 
-  if (ScaledOutput >= 255){ScaledOutput = 255;}
-  puller_speed = ScaledOutput;
+
+
+//  int ScaledOutput = (Output * 1.7);             //Scale the Output from 0-150 to 0-255)       
+//  if (ScaledOutput <= 0) {ScaledOutput = 1;}     //Limit the output to the range of 0-255) 
+//  if (ScaledOutput >= 255){ScaledOutput = 255;}
+//  puller_speed = ScaledOutput;
     
-  if ( (puller_speed - puller_speed_old) > 25) puller_speed = puller_speed_old + 25;
-  if ( (puller_speed - puller_speed_old) < -25) puller_speed =  puller_speed_old - 25;
-  
+  int deltaspeed=(int)(Output+0.5);
+//  if ( (puller_speed - puller_speed_old) > 25) puller_speed = puller_speed_old + 25;
+//  if ( (puller_speed - puller_speed_old) < -25) puller_speed =  puller_speed_old - 25;
+
+
+  puller_speed=puller_speed+deltaspeed;
+  if (logOn)
+  {
+    Serial.println("Output=" + String(Output) + " prev_p=" + String(previousLinePosition) + " cur_p=" + String(line_position) + " d_speed=" + String(deltaspeed) 
+                  + " speed=" + String(puller_speed) + " dInputbijdrage=" + String(Kp*(line_position-previousLinePosition)) + " time=" + String(millis()));
+  }
+  if (puller_speed<0) puller_speed=0;
+  if (puller_speed>255) puller_speed=255;
   analogWrite(motor_spoolerPin,puller_speed);    //Set the spool speed to the PID result
   puller_speed_old = puller_speed;
 
