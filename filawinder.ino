@@ -30,7 +30,7 @@ int maximum_from_EEPROM[4];
 double Setpoint, Input, Output;                            //Define PID Variables
 double Kp = 0.0020;
 double Ki = 0;
-double Kd = 0.0001;
+double Kd = 0.001;
 PID pullPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, REVERSE);    //Specify the links and initial tuning parameters
 
 //Digital Pins
@@ -181,8 +181,11 @@ Serial.print("QTR Minimum Values: ");
   for (int thisReading = 0; thisReading < numReadings; thisReading++)
     readings[thisReading] = 0;   
 
-  pullPID.SetOutputLimits(-150, 150);
+  pullPID.SetOutputLimits(-5, 5);
 //  pullPID.SetSampleTime(500);
+
+  Serial.println("Output;prev_p;cur_p;d_speed;speed;dInputbijdrage;time");
+
   
 }
  
@@ -273,7 +276,22 @@ Serial.print(puller_speed);
 Serial.print(" Loop Pos ");
 Serial.println(Input);
 }
-   
+
+unsigned long timeToMinimumSpeed=millis();
+#define minimumPullerSpeed 20
+#define maxTimeMinimumSpeed 2500 //in millisec
+
+void setMotorSpeed(int thisspeed)
+{
+  if (thisspeed<minimumPullerSpeed && (millis() - timeToMinimumSpeed < maxTimeMinimumSpeed)) {thisspeed=minimumPullerSpeed; }
+  else { timeToMinimumSpeed=millis(); }
+  if (thisspeed<0) {thisspeed=0;}
+  if (thisspeed>255) { thisspeed=255;}
+  
+  analogWrite(motor_spoolerPin,thisspeed);    //Set the spool speed to the PID result
+  puller_speed=thisspeed;
+}
+
    
 void manual_control()
 {  
@@ -281,16 +299,43 @@ void manual_control()
   int knob_reading = analogRead(knob_Pin);  // Get value from Puller Max Speed Knob
   puller_speed = knob_reading / 4.011;           //convert reading from pot to 0-255
   analogWrite(motor_spoolerPin,puller_speed);          //Set motor to the speed
-
+  timeToMinimumSpeed=millis();
   }
 
+unsigned int previousNonZeroPosition=0; //store last non-zero line position
+unsigned long timePreviousNonZeroPosition=millis(); // time when this non zero position was observed
+#define maxTimeBefore0 1000 //milli seconds before sustained zero position is valid
+#define cutoffMin 400
+#define cutoffMax 2600
+
+unsigned int getLinePosition()
+{
+  qtra.readCalibrated(sensorValues);              
+  unsigned int line_position = qtra.readLine(sensorValues, QTR_EMITTERS_OFF, 1);  
+  if (line_position==0||line_position==3000)
+  // ignore extreme position (0 or 3000) for a period of maxTimeBefore0
+  // and ignore when timePreviousNonZeroPosition between cutoffMin and cutoffMax
+  // the latter because the position is measured so often that a position outside these bounds will have to be seen first. 
+  { if (millis()-timePreviousNonZeroPosition<=maxTimeBefore0 
+       || (cutoffMin<previousNonZeroPosition && previousNonZeroPosition<cutoffMax)) 
+     { line_position=previousNonZeroPosition; } }
+  else
+  { previousNonZeroPosition=line_position;
+    timePreviousNonZeroPosition=millis();
+  }
+  return line_position;
+}
+
+// variable to store line position valid 100 miliseconds back
+// for reporting purposes only  
 unsigned int previousLinePosition=0;
 
 void pull_control()
 {
-  previousLinePosition=Input;
-  qtra.readCalibrated(sensorValues);              
-  unsigned int line_position = qtra.readLine(sensorValues, QTR_EMITTERS_OFF, 1);  
+//  qtra.readCalibrated(sensorValues);              
+//  unsigned int line_position = qtra.readLine(sensorValues, QTR_EMITTERS_OFF, 1);  
+    unsigned int line_position = getLinePosition();
+
   
 
   Input = line_position;                         //Get line position from sensors
@@ -298,27 +343,16 @@ void pull_control()
 
   if (!pullPID.Compute()) return;              //Run the PID 
 
-
-
-//  int ScaledOutput = (Output * 1.7);             //Scale the Output from 0-150 to 0-255)       
-//  if (ScaledOutput <= 0) {ScaledOutput = 1;}     //Limit the output to the range of 0-255) 
-//  if (ScaledOutput >= 255){ScaledOutput = 255;}
-//  puller_speed = ScaledOutput;
-    
   int deltaspeed=(int)(Output+0.5);
-//  if ( (puller_speed - puller_speed_old) > 25) puller_speed = puller_speed_old + 25;
-//  if ( (puller_speed - puller_speed_old) < -25) puller_speed =  puller_speed_old - 25;
+  setMotorSpeed(puller_speed+deltaspeed);    //Set the spool speed to the PID result
 
-
-  puller_speed=puller_speed+deltaspeed;
   if (logOn)
   {
-    Serial.println("Output=" + String(Output) + " prev_p=" + String(previousLinePosition) + " cur_p=" + String(line_position) + " d_speed=" + String(deltaspeed) 
-                  + " speed=" + String(puller_speed) + " dInputbijdrage=" + String(Kp*(line_position-previousLinePosition)) + " time=" + String(millis()));
+    Serial.println(String(Output) + ";" + String(previousLinePosition) + ";" + String(line_position) + ";" + String(deltaspeed) 
+                  + ";" + String(puller_speed) + ";" + String(Kp*(line_position-previousLinePosition)) + ";" + String(millis()));
   }
-  if (puller_speed<0) puller_speed=0;
-  if (puller_speed>255) puller_speed=255;
-  analogWrite(motor_spoolerPin,puller_speed);    //Set the spool speed to the PID result
+  
+  previousLinePosition=line_position;
   puller_speed_old = puller_speed;
 
 }
@@ -522,4 +556,5 @@ void restore_sensor(){
  
 }
 }
+
 
