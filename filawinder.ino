@@ -220,15 +220,15 @@ serial_output();   //Troubleshoot mode
 
 if (digitalRead(3) == 0 && digitalRead(8) == 1) {     //If guide max nutton is pressed go to calibrate_max
                                                       //calibrate_max will loop while the button is held down.
-//calibrate_max();                                      //When the button is let up it will return here and write the
-//EEPROM.writeFloat(90, guide_max);                           //new value to the EEPROM
+calibrate_max();                                      //When the button is let up it will return here and write the
+EEPROM.writeFloat(90, guide_max);                           //new value to the EEPROM
 logOn=true;
 }
 
 if (digitalRead(8) == 0 && digitalRead(3) ==1) {      //If guide min button is pressed go to guide min
 
-//calibrate_min();
-//EEPROM.writeFloat(100, guide_min); 
+calibrate_min();
+EEPROM.writeFloat(100, guide_min); 
 logOn=false;
 }
 
@@ -274,7 +274,11 @@ Serial.print(guide_angle);
 Serial.print(" Mot Speed ");
 Serial.print(puller_speed);
 Serial.print(" Loop Pos ");
-Serial.println(Input);
+Serial.print(Input);
+Serial.print(" Guide min ");
+Serial.print(EEPROM.readFloat(100));
+Serial.print(" Guide max ");
+Serial.println(EEPROM.readFloat(90));
 }
 
 unsigned long timeToMinimumSpeed=millis();
